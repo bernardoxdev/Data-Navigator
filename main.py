@@ -20,59 +20,59 @@ DEBUG = True
 # Gemini
 GEMINI_MODEL_NAME = "gemini-2.5-flash"
 
-# Diretórios
+# Directories
 BASE_DIR = Path(__file__).resolve().parent
 INPUT_DIR = BASE_DIR / "inputs"
 OUTPUT_DIR = BASE_DIR / "outputs"
 CREDENTIALS_FILE = BASE_DIR / "credentials" / "service_account.json"
 
-# Escopos para Sheets e Drive
+# Scopes for Sheets and Drive
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
 SYSTEM_PROMPT = """
-Você é um assistente de planilhas.
-Sua função é interpretar pedidos do usuário e retornar SOMENTE um JSON válido.
-Não escreva explicações fora do JSON.
-Nunca use markdown.
-Nunca use blocos de código.
+You are a spreadsheet assistant.
+Your job is to interpret user requests and return ONLY valid JSON.
+Do not write explanations outside the JSON.
+Never use markdown.
+Never use code blocks.
 
-Ações permitidas:
-- destacar_coluna
-- explicar_coluna
-- buscar_texto
-- resumir_aba
-- listar_abas
-- listar_colunas
+Allowed actions:
+- highlight_column
+- explain_column
+- search_text
+- summarize_sheet
+- list_sheets
+- list_columns
 
-Formato esperado:
+Expected format:
 {
-  "acao": "nome_da_acao",
-  "aba": "nome_da_aba_ou_null",
-  "coluna": "nome_da_coluna_ou_null",
-  "texto": "texto_ou_null"
+  "action": "action_name",
+  "sheet": "sheet_name_or_null",
+  "column": "column_name_or_null",
+  "text": "text_or_null"
 }
 
-Regras:
-- Se o usuário pedir para destacar uma coluna, use "destacar_coluna".
-- Se o usuário pedir explicação sobre uma coluna, use "explicar_coluna".
-- Se o usuário pedir para procurar um protocolo, código, texto ou termo, use "buscar_texto".
-- Se o usuário pedir um resumo da aba, use "resumir_aba".
-- Se o usuário pedir abas disponíveis, use "listar_abas".
-- Se o usuário pedir colunas disponíveis, use "listar_colunas".
-- Se não souber a aba, retorne aba como null.
-- Se não souber a coluna, retorne coluna como null.
-- Se não houver texto, retorne texto como null.
-- Responda sempre em JSON válido.
+Rules:
+- If the user asks to highlight a column, use "highlight_column".
+- If the user asks for an explanation about a column, use "explain_column".
+- If the user asks to search for a protocol, code, text, or term, use "search_text".
+- If the user asks for a summary of the sheet, use "summarize_sheet".
+- If the user asks for available sheets, use "list_sheets".
+- If the user asks for available columns, use "list_columns".
+- If the sheet is unknown, return sheet as null.
+- If the column is unknown, return column as null.
+- If there is no text, return text as null.
+- Always respond with valid JSON.
 """.strip()
 
 
 # =========================================================
 # AUTH / CLIENTS
 # =========================================================
-def garantir_diretorios() -> None:
+def ensure_directories() -> None:
     INPUT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     CREDENTIALS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -81,7 +81,7 @@ def garantir_diretorios() -> None:
 def get_google_credentials() -> Credentials:
     if not CREDENTIALS_FILE.exists():
         raise FileNotFoundError(
-            f"Arquivo de credenciais não encontrado em: {CREDENTIALS_FILE}"
+            f"Credentials file not found at: {CREDENTIALS_FILE}"
         )
 
     return Credentials.from_service_account_file(
@@ -100,13 +100,13 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
-def configurar_gemini() -> str:
+def configure_gemini() -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise EnvironmentError(
-            "Defina a variável GEMINI_API_KEY no ambiente.\n"
-            "Exemplo:\n"
-            'export GEMINI_API_KEY="SUA_CHAVE"'
+            "Set the GEMINI_API_KEY environment variable.\n"
+            "Example:\n"
+            'export GEMINI_API_KEY="YOUR_KEY"'
         )
     return api_key
 
@@ -114,65 +114,65 @@ def configurar_gemini() -> str:
 # =========================================================
 # HELPERS
 # =========================================================
-def encontrar_nome_proximo(
-    opcoes: list[str],
-    termo: str | None,
+def find_closest_name(
+    options: list[str],
+    term: str | None,
     cutoff: float = 0.5,
 ) -> str | None:
-    if termo is None:
+    if term is None:
         return None
 
-    opcoes_str = [str(x) for x in opcoes]
-    termo_lower = termo.lower().strip()
+    options_str = [str(x) for x in options]
+    term_lower = term.lower().strip()
 
-    for opc in opcoes_str:
-        if opc.lower().strip() == termo_lower:
-            return opc
+    for option in options_str:
+        if option.lower().strip() == term_lower:
+            return option
 
-    for opc in opcoes_str:
-        if termo_lower in opc.lower():
-            return opc
+    for option in options_str:
+        if term_lower in option.lower():
+            return option
 
     matches = get_close_matches(
-        termo_lower,
-        [x.lower() for x in opcoes_str],
+        term_lower,
+        [x.lower() for x in options_str],
         n=1,
         cutoff=cutoff,
     )
     if not matches:
         return None
 
-    for opc in opcoes_str:
-        if opc.lower() == matches[0]:
-            return opc
+    for option in options_str:
+        if option.lower() == matches[0]:
+            return option
 
     return None
 
 
-def extrair_json_bruto(texto: str) -> dict[str, Any]:
-    texto = texto.strip()
+def extract_raw_json(text: str) -> dict[str, Any]:
+    text = text.strip()
 
     try:
-        return json.loads(texto)
+        return json.loads(text)
     except Exception:
         pass
 
-    match = re.search(r"\{.*\}", texto, re.DOTALL)
+    match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
-        trecho = match.group(0)
+        snippet = match.group(0)
         try:
-            return json.loads(trecho)
+            return json.loads(snippet)
         except Exception:
             pass
 
-    raise ValueError(f"Não foi possível extrair JSON válido:\n{texto}")
+    raise ValueError(f"Could not extract valid JSON:\n{text}")
 
 
-def sanitizar_nome_arquivo(texto: str) -> str:
-    texto = texto.strip()
-    texto = re.sub(r"[^\w\-_.]+", "_", texto, flags=re.UNICODE)
-    texto = re.sub(r"_+", "_", texto)
-    return texto[:120].strip("_") or "saida"
+def sanitize_filename(text: str) -> str:
+    text = text.strip()
+    text = re.sub(r"[^\w\-_.]+", "_", text, flags=re.UNICODE)
+    text = re.sub(r"_+", "_", text)
+    return text[:120].strip("_") or "output"
 
 
 def col_idx_to_a1(col_idx_zero_based: int) -> str:
@@ -189,29 +189,29 @@ def col_idx_to_a1(col_idx_zero_based: int) -> str:
 # =========================================================
 class SpreadsheetGeminiAgent:
     def __init__(self, model_name: str = GEMINI_MODEL_NAME):
-        api_key = configurar_gemini()
+        api_key = configure_gemini()
         self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
 
         if DEBUG:
-            print(f"[DEBUG] Gemini carregado: {model_name}")
+            print(f"[DEBUG] Gemini loaded: {model_name}")
 
-    def interpretar(
+    def interpret(
         self,
-        comando_usuario: str,
-        nomes_abas: list[str],
-        colunas_por_aba: dict[str, list[str]],
+        user_command: str,
+        sheet_names: list[str],
+        columns_by_sheet: dict[str, list[str]],
     ) -> dict[str, Any]:
-        contexto = {
-            "abas_disponiveis": nomes_abas,
-            "colunas_por_aba": colunas_por_aba,
-            "pedido_usuario": comando_usuario,
+        context = {
+            "available_sheets": sheet_names,
+            "columns_by_sheet": columns_by_sheet,
+            "user_request": user_command,
         }
 
         prompt = (
             SYSTEM_PROMPT
-            + "\n\nContexto:\n"
-            + json.dumps(contexto, ensure_ascii=False, indent=2)
+            + "\n\nContext:\n"
+            + json.dumps(context, ensure_ascii=False, indent=2)
         )
 
         response = self.client.models.generate_content(
@@ -219,77 +219,77 @@ class SpreadsheetGeminiAgent:
             contents=prompt,
         )
 
-        texto = (response.text or "").strip()
+        text = (response.text or "").strip()
 
         if DEBUG:
-            print("\n[DEBUG] Resposta bruta do Gemini:")
-            print(texto)
+            print("\n[DEBUG] Raw Gemini response:")
+            print(text)
 
-        if not texto:
-            raise ValueError("O Gemini retornou uma resposta vazia.")
+        if not text:
+            raise ValueError("Gemini returned an empty response.")
 
-        acao = extrair_json_bruto(texto)
-        acao.setdefault("acao", None)
-        acao.setdefault("aba", None)
-        acao.setdefault("coluna", None)
-        acao.setdefault("texto", None)
-        return acao
+        action = extract_raw_json(text)
+        action.setdefault("action", None)
+        action.setdefault("sheet", None)
+        action.setdefault("column", None)
+        action.setdefault("text", None)
+        return action
 
 
 # =========================================================
 # GOOGLE SHEETS
 # =========================================================
-def obter_metadata_planilha(sheets_service, spreadsheet_id: str) -> dict[str, Any]:
+def get_spreadsheet_metadata(sheets_service, spreadsheet_id: str) -> dict[str, Any]:
     return sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
 
 
-def normalizar_headers(headers: list[str]) -> list[str]:
-    usados: dict[str, int] = {}
-    saida: list[str] = []
+def normalize_headers(headers: list[str]) -> list[str]:
+    used: dict[str, int] = {}
+    output: list[str] = []
 
     for i, h in enumerate(headers):
-        nome = str(h).strip() if h is not None else ""
-        if not nome:
-            nome = f"coluna_{i + 1}"
+        name = str(h).strip() if h is not None else ""
+        if not name:
+            name = f"column_{i + 1}"
 
-        if nome in usados:
-            usados[nome] += 1
-            nome_final = f"{nome}_{usados[nome]}"
+        if name in used:
+            used[name] += 1
+            final_name = f"{name}_{used[name]}"
         else:
-            usados[nome] = 1
-            nome_final = nome
+            used[name] = 1
+            final_name = name
 
-        saida.append(nome_final)
+        output.append(final_name)
 
-    return saida
+    return output
 
 
-def listar_abas_e_colunas(
+def list_sheets_and_columns(
     sheets_service,
     spreadsheet_id: str,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, int]]:
-    metadata = obter_metadata_planilha(sheets_service, spreadsheet_id)
+    metadata = get_spreadsheet_metadata(sheets_service, spreadsheet_id)
 
-    planilhas: dict[str, pd.DataFrame] = {}
+    spreadsheets: dict[str, pd.DataFrame] = {}
     sheet_ids: dict[str, int] = {}
 
     for sheet in metadata["sheets"]:
         props = sheet["properties"]
-        nome_aba = props["title"]
-        sheet_ids[nome_aba] = props["sheetId"]
+        sheet_name = props["title"]
+        sheet_ids[sheet_name] = props["sheetId"]
 
         result = sheets_service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
-            range=nome_aba,
+            range=sheet_name,
         ).execute()
 
         values = result.get("values", [])
 
         if not values:
-            planilhas[nome_aba] = pd.DataFrame()
+            spreadsheets[sheet_name] = pd.DataFrame()
             continue
 
-        header = normalizar_headers(values[0])
+        header = normalize_headers(values[0])
         rows = values[1:] if len(values) > 1 else []
 
         max_cols = len(header)
@@ -298,22 +298,22 @@ def listar_abas_e_colunas(
             row = list(row) + [""] * (max_cols - len(row))
             normalized_rows.append(row[:max_cols])
 
-        planilhas[nome_aba] = pd.DataFrame(normalized_rows, columns=header)
+        spreadsheets[sheet_name] = pd.DataFrame(normalized_rows, columns=header)
 
-    return planilhas, sheet_ids
+    return spreadsheets, sheet_ids
 
 
-def criar_planilha_google(sheets_service, titulo: str) -> tuple[str, dict[str, int]]:
+def create_google_spreadsheet(sheets_service, title: str) -> tuple[str, dict[str, int]]:
     body = {
         "properties": {
-            "title": titulo,
+            "title": title,
         }
     }
 
     spreadsheet = sheets_service.spreadsheets().create(body=body).execute()
     spreadsheet_id = spreadsheet["spreadsheetId"]
 
-    metadata = obter_metadata_planilha(sheets_service, spreadsheet_id)
+    metadata = get_spreadsheet_metadata(sheets_service, spreadsheet_id)
     sheet_ids = {
         s["properties"]["title"]: s["properties"]["sheetId"]
         for s in metadata["sheets"]
@@ -322,27 +322,27 @@ def criar_planilha_google(sheets_service, titulo: str) -> tuple[str, dict[str, i
     return spreadsheet_id, sheet_ids
 
 
-def escrever_dataframe_em_aba(
+def write_dataframe_to_sheet(
     sheets_service,
     spreadsheet_id: str,
-    aba: str,
+    sheet: str,
     df: pd.DataFrame,
 ) -> None:
     values = [list(df.columns)] + df.fillna("").astype(str).values.tolist()
 
     sheets_service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
-        range=f"{aba}!A1",
+        range=f"{sheet}!A1",
         valueInputOption="RAW",
         body={"values": values},
     ).execute()
 
 
-def renomear_aba(
+def rename_sheet(
     sheets_service,
     spreadsheet_id: str,
     sheet_id: int,
-    novo_nome: str,
+    new_name: str,
 ) -> None:
     body = {
         "requests": [
@@ -350,7 +350,7 @@ def renomear_aba(
                 "updateSheetProperties": {
                     "properties": {
                         "sheetId": sheet_id,
-                        "title": novo_nome,
+                        "title": new_name,
                     },
                     "fields": "title",
                 }
@@ -364,13 +364,13 @@ def renomear_aba(
     ).execute()
 
 
-def adicionar_aba(sheets_service, spreadsheet_id: str, nome_aba: str) -> int:
+def add_sheet(sheets_service, spreadsheet_id: str, sheet_name: str) -> int:
     body = {
         "requests": [
             {
                 "addSheet": {
                     "properties": {
-                        "title": nome_aba,
+                        "title": sheet_name,
                     }
                 }
             }
@@ -385,12 +385,12 @@ def adicionar_aba(sheets_service, spreadsheet_id: str, nome_aba: str) -> int:
     return resp["replies"][0]["addSheet"]["properties"]["sheetId"]
 
 
-def destacar_coluna_google(
+def highlight_column_google(
     sheets_service,
     spreadsheet_id: str,
     sheet_id: int,
-    idx_coluna_zero_based: int,
-    total_linhas: int,
+    column_idx_zero_based: int,
+    total_rows: int,
 ) -> None:
     body = {
         "requests": [
@@ -399,9 +399,9 @@ def destacar_coluna_google(
                     "range": {
                         "sheetId": sheet_id,
                         "startRowIndex": 0,
-                        "endRowIndex": total_linhas,
-                        "startColumnIndex": idx_coluna_zero_based,
-                        "endColumnIndex": idx_coluna_zero_based + 1,
+                        "endRowIndex": total_rows,
+                        "startColumnIndex": column_idx_zero_based,
+                        "endColumnIndex": column_idx_zero_based + 1,
                     },
                     "cell": {
                         "userEnteredFormat": {
@@ -421,8 +421,8 @@ def destacar_coluna_google(
                         "sheetId": sheet_id,
                         "startRowIndex": 0,
                         "endRowIndex": 1,
-                        "startColumnIndex": idx_coluna_zero_based,
-                        "endColumnIndex": idx_coluna_zero_based + 1,
+                        "startColumnIndex": column_idx_zero_based,
+                        "endColumnIndex": column_idx_zero_based + 1,
                     },
                     "cell": {
                         "userEnteredFormat": {
@@ -451,350 +451,348 @@ def destacar_coluna_google(
 # =========================================================
 # ANALYSIS
 # =========================================================
-def explicar_coluna(df: pd.DataFrame, nome_coluna: str) -> str:
-    if nome_coluna not in df.columns:
-        return f"A coluna '{nome_coluna}' não foi encontrada."
+def explain_column(df: pd.DataFrame, column_name: str) -> str:
+    if column_name not in df.columns:
+        return f"The column '{column_name}' was not found."
 
-    serie = df[nome_coluna]
-    texto = []
-    texto.append(f"Coluna analisada: {nome_coluna}")
-    texto.append(f"Quantidade de registros: {len(serie)}")
-    texto.append(f"Valores vazios: {int(serie.isna().sum())}")
+    series = df[column_name]
+    text = []
+    text.append(f"Analyzed column: {column_name}")
+    text.append(f"Number of records: {len(series)}")
+    text.append(f"Empty values: {int(series.isna().sum())}")
 
-    serie_num = pd.to_numeric(serie, errors="coerce")
-    if serie_num.notna().sum() > 0:
-        texto.append("Tipo: numérico")
-        texto.append(f"Menor valor: {serie_num.min()}")
-        texto.append(f"Maior valor: {serie_num.max()}")
-        texto.append(f"Média: {serie_num.mean():.2f}")
-        texto.append(f"Soma: {serie_num.sum():.2f}")
+    series_num = pd.to_numeric(series, errors="coerce")
+    if series_num.notna().sum() > 0:
+        text.append("Type: numeric")
+        text.append(f"Minimum value: {series_num.min()}")
+        text.append(f"Maximum value: {series_num.max()}")
+        text.append(f"Average: {series_num.mean():.2f}")
+        text.append(f"Sum: {series_num.sum():.2f}")
     else:
-        texto.append("Tipo: texto/categórico")
-        exemplos = list(serie.dropna().astype(str).unique()[:10])
-        texto.append(f"Exemplos de valores: {exemplos}")
+        text.append("Type: text/categorical")
+        examples = list(series.dropna().astype(str).unique()[:10])
+        text.append(f"Example values: {examples}")
 
-    return "\n".join(texto)
+    return "\n".join(text)
 
 
-def buscar_texto_em_dataframe(df: pd.DataFrame, texto: str) -> pd.DataFrame:
+def search_text_in_dataframe(df: pd.DataFrame, text: str) -> pd.DataFrame:
     if df.empty:
         return df
 
-    texto = str(texto).strip()
-    if not texto:
+    text = str(text).strip()
+    if not text:
         return df.iloc[0:0]
 
     mask = df.astype(str).apply(
-        lambda col: col.str.contains(re.escape(texto), case=False, na=False, regex=True)
+        lambda col: col.str.contains(re.escape(text), case=False, na=False, regex=True)
     )
     return df[mask.any(axis=1)]
 
 
-def resumir_aba(df: pd.DataFrame, nome_aba: str) -> str:
-    linhas, colunas = df.shape
-    texto = [f"Resumo da aba '{nome_aba}':"]
-    texto.append(f"- Linhas: {linhas}")
-    texto.append(f"- Colunas: {colunas}")
-    texto.append(f"- Nomes das colunas: {list(df.columns)}")
+def summarize_sheet(df: pd.DataFrame, sheet_name: str) -> str:
+    rows, columns = df.shape
+    text = [f"Summary of sheet '{sheet_name}':"]
+    text.append(f"- Rows: {rows}")
+    text.append(f"- Columns: {columns}")
+    text.append(f"- Column names: {list(df.columns)}")
 
     if df.empty:
-        return "\n".join(texto)
+        return "\n".join(text)
 
-    numericas = []
+    numeric_columns = []
     for col in df.columns:
-        serie_num = pd.to_numeric(df[col], errors="coerce")
-        if serie_num.notna().sum() > 0:
-            numericas.append(col)
+        series_num = pd.to_numeric(df[col], errors="coerce")
+        if series_num.notna().sum() > 0:
+            numeric_columns.append(col)
 
-    categoricas = [c for c in df.columns if c not in numericas]
+    categorical_columns = [c for c in df.columns if c not in numeric_columns]
 
-    texto.append(f"- Colunas numéricas: {numericas}")
-    texto.append(f"- Colunas categóricas/textuais: {categoricas}")
+    text.append(f"- Numeric columns: {numeric_columns}")
+    text.append(f"- Categorical/text columns: {categorical_columns}")
 
-    if numericas:
-        texto.append("- Estatísticas básicas:")
-        for col in numericas[:10]:
-            serie_num = pd.to_numeric(df[col], errors="coerce")
-            texto.append(
-                f"  * {col}: min={serie_num.min()}, max={serie_num.max()}, média={serie_num.mean():.2f}"
+    if numeric_columns:
+        text.append("- Basic statistics:")
+        for col in numeric_columns[:10]:
+            series_num = pd.to_numeric(df[col], errors="coerce")
+            text.append(
+                f"  * {col}: min={series_num.min()}, max={series_num.max()}, average={series_num.mean():.2f}"
             )
 
-    return "\n".join(texto)
+    return "\n".join(text)
 
 
 # =========================================================
 # EXECUTION
 # =========================================================
-def resolver_aba(planilhas: dict[str, pd.DataFrame], aba_sugerida: str | None) -> str:
-    abas = list(planilhas.keys())
+def resolve_sheet(spreadsheets: dict[str, pd.DataFrame], suggested_sheet: str | None) -> str:
+    sheets = list(spreadsheets.keys())
 
-    if not abas:
-        raise ValueError("Nenhuma aba foi encontrada na planilha.")
+    if not sheets:
+        raise ValueError("No sheets were found in the spreadsheet.")
 
-    if len(abas) == 1:
-        return abas[0]
+    if len(sheets) == 1:
+        return sheets[0]
 
-    encontrada = encontrar_nome_proximo(abas, aba_sugerida)
-    if encontrada:
-        return encontrada
+    found = find_closest_name(sheets, suggested_sheet)
+    if found:
+        return found
 
-    return abas[0]
+    return sheets[0]
 
 
-def resolver_coluna(
+def resolve_column(
     df: pd.DataFrame,
-    coluna_sugerida: str | None,
+    suggested_column: str | None,
     fallback_keywords: list[str] | None = None,
 ) -> str | None:
-    colunas = [str(c) for c in df.columns]
+    columns = [str(c) for c in df.columns]
 
-    encontrada = encontrar_nome_proximo(colunas, coluna_sugerida)
-    if encontrada:
-        return encontrada
+    found = find_closest_name(columns, suggested_column)
+    if found:
+        return found
 
     if fallback_keywords:
         for kw in fallback_keywords:
-            encontrada = encontrar_nome_proximo(colunas, kw)
-            if encontrada:
-                return encontrada
+            found = find_closest_name(columns, kw)
+            if found:
+                return found
 
     return None
 
 
-def salvar_texto_output(nome_arquivo: str, conteudo: str) -> Path:
-    caminho = OUTPUT_DIR / nome_arquivo
-    caminho.write_text(conteudo, encoding="utf-8")
-    return caminho
+def save_text_output(filename: str, content: str) -> Path:
+    path = OUTPUT_DIR / filename
+    path.write_text(content, encoding="utf-8")
+    return path
 
 
-def executar_acao(
-    acao: dict[str, Any],
+def execute_action(
+    action: dict[str, Any],
     spreadsheet_id: str,
-    planilhas: dict[str, pd.DataFrame],
-    sheet_ids_origem: dict[str, int],
+    spreadsheets: dict[str, pd.DataFrame],
+    source_sheet_ids: dict[str, int],
     sheets_service,
 ) -> None:
-    tipo_acao = acao.get("acao")
-    aba_sugerida = acao.get("aba")
-    coluna_sugerida = acao.get("coluna")
-    texto_sugerido = acao.get("texto")
+    action_type = action.get("action")
+    suggested_sheet = action.get("sheet")
+    suggested_column = action.get("column")
+    suggested_text = action.get("text")
 
-    if tipo_acao == "listar_abas":
-        print("Abas disponíveis:")
-        for aba in planilhas.keys():
-            print(f"- {aba}")
+    if action_type == "list_sheets":
+        print("Available sheets:")
+        for sheet in spreadsheets.keys():
+            print(f"- {sheet}")
         return
 
-    if tipo_acao == "listar_colunas":
-        aba_real = resolver_aba(planilhas, aba_sugerida)
-        print(f"Colunas da aba '{aba_real}':")
-        for col in planilhas[aba_real].columns:
+    if action_type == "list_columns":
+        real_sheet = resolve_sheet(spreadsheets, suggested_sheet)
+        print(f"Columns in sheet '{real_sheet}':")
+        for col in spreadsheets[real_sheet].columns:
             print(f"- {col}")
         return
 
-    if tipo_acao == "resumir_aba":
-        aba_real = resolver_aba(planilhas, aba_sugerida)
-        resumo = resumir_aba(planilhas[aba_real], aba_real)
-        print(resumo)
-        salvar_texto_output(
-            f"resumo_{sanitizar_nome_arquivo(aba_real)}.txt",
-            resumo,
+    if action_type == "summarize_sheet":
+        real_sheet = resolve_sheet(spreadsheets, suggested_sheet)
+        summary = summarize_sheet(spreadsheets[real_sheet], real_sheet)
+        print(summary)
+        save_text_output(
+            f"summary_{sanitize_filename(real_sheet)}.txt",
+            summary,
         )
         return
 
-    if tipo_acao == "explicar_coluna":
-        aba_real = resolver_aba(planilhas, aba_sugerida)
-        df = planilhas[aba_real]
+    if action_type == "explain_column":
+        real_sheet = resolve_sheet(spreadsheets, suggested_sheet)
+        df = spreadsheets[real_sheet]
 
-        coluna_real = resolver_coluna(
+        real_column = resolve_column(
             df,
-            coluna_sugerida,
+            suggested_column,
             fallback_keywords=[
-                "lucro",
                 "profit",
-                "margem",
-                "resultado",
-                "faturamento",
-                "receita",
+                "margin",
+                "result",
+                "revenue",
+                "income",
                 "status",
-                "protocolo",
+                "protocol",
             ],
         )
 
-        if coluna_real is None:
-            print("Não foi possível identificar a coluna para explicar.")
+        if real_column is None:
+            print("Could not identify the column to explain.")
             return
 
-        explicacao = explicar_coluna(df, coluna_real)
-        print(explicacao)
-        salvar_texto_output(
-            f"explicacao_{sanitizar_nome_arquivo(aba_real)}_{sanitizar_nome_arquivo(coluna_real)}.txt",
-            explicacao,
+        explanation = explain_column(df, real_column)
+        print(explanation)
+        save_text_output(
+            f"explanation_{sanitize_filename(real_sheet)}_{sanitize_filename(real_column)}.txt",
+            explanation,
         )
         return
 
-    if tipo_acao == "buscar_texto":
-        aba_real = resolver_aba(planilhas, aba_sugerida)
-        df = planilhas[aba_real]
+    if action_type == "search_text":
+        real_sheet = resolve_sheet(spreadsheets, suggested_sheet)
+        df = spreadsheets[real_sheet]
 
-        if not texto_sugerido:
-            print("Nenhum texto foi informado para busca.")
+        if not suggested_text:
+            print("No text was provided for searching.")
             return
 
-        encontrados = buscar_texto_em_dataframe(df, texto_sugerido)
+        found_rows = search_text_in_dataframe(df, suggested_text)
         print(
-            f"Foram encontradas {len(encontrados)} linha(s) com o texto "
-            f"'{texto_sugerido}' na aba '{aba_real}'."
+            f"{len(found_rows)} row(s) were found with the text "
+            f"'{suggested_text}' in sheet '{real_sheet}'."
         )
 
-        if len(encontrados) > 0:
-            print(encontrados.head(20).to_string(index=False))
-            caminho_saida = OUTPUT_DIR / (
-                f"busca_{sanitizar_nome_arquivo(aba_real)}_"
-                f"{sanitizar_nome_arquivo(str(texto_sugerido))}.csv"
+        if len(found_rows) > 0:
+            print(found_rows.head(20).to_string(index=False))
+            output_path = OUTPUT_DIR / (
+                f"search_{sanitize_filename(real_sheet)}_"
+                f"{sanitize_filename(str(suggested_text))}.csv"
             )
-            encontrados.to_csv(caminho_saida, index=False)
-            print(f"\nResultado salvo em: {caminho_saida}")
+            found_rows.to_csv(output_path, index=False)
+            print(f"\nResult saved to: {output_path}")
         return
 
-    if tipo_acao == "destacar_coluna":
-        aba_real = resolver_aba(planilhas, aba_sugerida)
-        df = planilhas[aba_real]
+    if action_type == "highlight_column":
+        real_sheet = resolve_sheet(spreadsheets, suggested_sheet)
+        df = spreadsheets[real_sheet]
 
-        coluna_real = resolver_coluna(
+        real_column = resolve_column(
             df,
-            coluna_sugerida,
+            suggested_column,
             fallback_keywords=[
-                "lucro",
                 "profit",
-                "margem",
-                "resultado",
-                "faturamento",
-                "receita",
+                "margin",
+                "result",
+                "revenue",
+                "income",
                 "status",
-                "protocolo",
+                "protocol",
             ],
         )
 
-        if coluna_real is None:
-            print("Não foi possível identificar a coluna a ser destacada.")
+        if real_column is None:
+            print("Could not identify the column to highlight.")
             return
 
-        novo_titulo = sanitizar_nome_arquivo(f"destacado_{aba_real}_{coluna_real}")
-        novo_spreadsheet_id, _ = criar_planilha_google(sheets_service, novo_titulo)
+        new_title = sanitize_filename(f"highlighted_{real_sheet}_{real_column}")
+        new_spreadsheet_id, _ = create_google_spreadsheet(sheets_service, new_title)
 
-        metadata_nova = obter_metadata_planilha(sheets_service, novo_spreadsheet_id)
-        aba_padrao = metadata_nova["sheets"][0]["properties"]["title"]
-        id_aba_padrao = metadata_nova["sheets"][0]["properties"]["sheetId"]
+        new_metadata = get_spreadsheet_metadata(sheets_service, new_spreadsheet_id)
+        default_sheet = new_metadata["sheets"][0]["properties"]["title"]
+        default_sheet_id = new_metadata["sheets"][0]["properties"]["sheetId"]
 
-        if aba_padrao != aba_real:
-            renomear_aba(sheets_service, novo_spreadsheet_id, id_aba_padrao, aba_real)
+        if default_sheet != real_sheet:
+            rename_sheet(sheets_service, new_spreadsheet_id, default_sheet_id, real_sheet)
 
-        escrever_dataframe_em_aba(
+        write_dataframe_to_sheet(
             sheets_service=sheets_service,
-            spreadsheet_id=novo_spreadsheet_id,
-            aba=aba_real,
+            spreadsheet_id=new_spreadsheet_id,
+            sheet=real_sheet,
             df=df,
         )
 
-        idx_coluna = list(df.columns).index(coluna_real)
-        total_linhas = len(df) + 1
+        column_idx = list(df.columns).index(real_column)
+        total_rows = len(df) + 1
 
-        metadata_atualizada = obter_metadata_planilha(sheets_service, novo_spreadsheet_id)
-        sheet_id_real = None
+        updated_metadata = get_spreadsheet_metadata(sheets_service, new_spreadsheet_id)
+        real_sheet_id = None
 
-        for s in metadata_atualizada["sheets"]:
-            if s["properties"]["title"] == aba_real:
-                sheet_id_real = s["properties"]["sheetId"]
+        for s in updated_metadata["sheets"]:
+            if s["properties"]["title"] == real_sheet:
+                real_sheet_id = s["properties"]["sheetId"]
                 break
 
-        if sheet_id_real is None:
+        if real_sheet_id is None:
             raise ValueError(
-                f"Não foi possível localizar a aba '{aba_real}' na nova planilha."
+                f"Could not locate the sheet '{real_sheet}' in the new spreadsheet."
             )
 
-        destacar_coluna_google(
+        highlight_column_google(
             sheets_service=sheets_service,
-            spreadsheet_id=novo_spreadsheet_id,
-            sheet_id=sheet_id_real,
-            idx_coluna_zero_based=idx_coluna,
-            total_linhas=total_linhas,
+            spreadsheet_id=new_spreadsheet_id,
+            sheet_id=real_sheet_id,
+            column_idx_zero_based=column_idx,
+            total_rows=total_rows,
         )
 
-        link = f"https://docs.google.com/spreadsheets/d/{novo_spreadsheet_id}"
-        texto_saida = (
-            f"Coluna '{coluna_real}' destacada com sucesso na aba '{aba_real}'.\n"
-            f"Planilha criada: {link}"
+        link = f"https://docs.google.com/spreadsheets/d/{new_spreadsheet_id}"
+        output_text = (
+            f"Column '{real_column}' highlighted successfully in sheet '{real_sheet}'.\n"
+            f"Spreadsheet created: {link}"
         )
-        print(texto_saida)
-        salvar_texto_output(
-            f"planilha_destacada_{sanitizar_nome_arquivo(aba_real)}_{sanitizar_nome_arquivo(coluna_real)}.txt",
-            texto_saida,
+        print(output_text)
+        save_text_output(
+            f"highlighted_spreadsheet_{sanitize_filename(real_sheet)}_{sanitize_filename(real_column)}.txt",
+            output_text,
         )
         return
 
-    print("Ação não reconhecida ou não suportada.")
-    print(json.dumps(acao, ensure_ascii=False, indent=2))
+    print("Unrecognized or unsupported action.")
+    print(json.dumps(action, ensure_ascii=False, indent=2))
 
 
 # =========================================================
 # MAIN
 # =========================================================
 def main():
-    garantir_diretorios()
+    ensure_directories()
 
-    print("Assistente Google Sheets + Gemini\n")
-    spreadsheet_id = input("Digite o spreadsheet_id da planilha Google: ").strip()
+    print("Google Sheets + Gemini Assistant\n")
+    spreadsheet_id = input("Enter the Google spreadsheet_id: ").strip()
 
     if not spreadsheet_id:
-        raise ValueError("Você precisa informar um spreadsheet_id válido.")
+        raise ValueError("You must provide a valid spreadsheet_id.")
 
     sheets_service = get_sheets_service()
-    planilhas, sheet_ids = listar_abas_e_colunas(sheets_service, spreadsheet_id)
+    spreadsheets, sheet_ids = list_sheets_and_columns(sheets_service, spreadsheet_id)
 
-    print("\nPlanilha carregada com sucesso.")
-    print("Abas disponíveis:")
-    for nome_aba, df in planilhas.items():
-        print(f"- {nome_aba} ({df.shape[0]} linhas, {df.shape[1]} colunas)")
+    print("\nSpreadsheet loaded successfully.")
+    print("Available sheets:")
+    for sheet_name, df in spreadsheets.items():
+        print(f"- {sheet_name} ({df.shape[0]} rows, {df.shape[1]} columns)")
 
-    colunas_por_aba = {
-        aba: [str(c) for c in df.columns]
-        for aba, df in planilhas.items()
+    columns_by_sheet = {
+        sheet: [str(c) for c in df.columns]
+        for sheet, df in spreadsheets.items()
     }
 
-    agente = SpreadsheetGeminiAgent()
+    agent = SpreadsheetGeminiAgent()
 
     while True:
-        comando = input("\nDigite seu comando (ou 'sair'): ").strip()
-        if comando.lower() in {"sair", "exit", "quit"}:
-            print("Encerrando assistente.")
+        command = input("\nEnter your command (or 'exit'): ").strip()
+        if command.lower() in {"exit", "quit"}:
+            print("Closing assistant.")
             break
 
-        if not comando:
-            print("Digite um comando válido.")
+        if not command:
+            print("Enter a valid command.")
             continue
 
         try:
-            acao = agente.interpretar(
-                comando_usuario=comando,
-                nomes_abas=list(planilhas.keys()),
-                colunas_por_aba=colunas_por_aba,
+            action = agent.interpret(
+                user_command=command,
+                sheet_names=list(spreadsheets.keys()),
+                columns_by_sheet=columns_by_sheet,
             )
 
             if DEBUG:
-                print("\n[DEBUG] JSON interpretado:")
-                print(json.dumps(acao, ensure_ascii=False, indent=2))
+                print("\n[DEBUG] Parsed JSON:")
+                print(json.dumps(action, ensure_ascii=False, indent=2))
 
-            executar_acao(
-                acao=acao,
+            execute_action(
+                action=action,
                 spreadsheet_id=spreadsheet_id,
-                planilhas=planilhas,
-                sheet_ids_origem=sheet_ids,
+                spreadsheets=spreadsheets,
+                source_sheet_ids=sheet_ids,
                 sheets_service=sheets_service,
             )
 
         except Exception as e:
-            print(f"Erro ao processar comando: {e}")
+            print(f"Error processing command: {e}")
 
 
 if __name__ == "__main__":
